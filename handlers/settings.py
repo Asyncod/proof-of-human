@@ -83,7 +83,7 @@ async def settings_command(message: Message) -> None:
     text = (
         f"⚙️ <b>Настройки чата: {chat_data.chat_title}</b>\n\n"
         f"🔹 <b>Капча:</b> {'✅ Включена' if chat_data.chat_captcha_enabled else '❌ Выключена'}\n"
-        f"🔹 <b>Таймаут:</b> {chat_data.chat_timeout} сек\n"
+        f"🔹 <b>Таймаут:</b> {chat_data.chat_captcha_timeout} сек\n"
         f"🔹 <b>Попыток:</b> {chat_data.chat_max_attempts}"
     )
 
@@ -221,7 +221,7 @@ async def settings_callback(callback: CallbackQuery) -> None:
 
     elif action == "set_timeout":
         value = int(parts[3])
-        await update_chat(field="chat_timeout", data=value, chat_id=chat_id)
+        await update_chat(field="chat_captcha_timeout", data=value, chat_id=chat_id)
         await safe_callback_answer(callback, f"✅ Таймаут: {value} сек")
 
     elif action == "attempts":
@@ -265,7 +265,7 @@ async def settings_callback(callback: CallbackQuery) -> None:
     text = (
         f"⚙️ <b>Настройки чата: {updated_chat.chat_title}</b>\n\n"
         f"🔹 <b>Капча:</b> {'✅ Включена' if updated_chat.chat_captcha_enabled else '❌ Выключена'}\n"
-        f"🔹 <b>Таймаут:</b> {updated_chat.chat_timeout} сек\n"
+        f"🔹 <b>Таймаут:</b> {updated_chat.chat_captcha_timeout} сек\n"
         f"🔹 <b>Попыток:</b> {updated_chat.chat_max_attempts}"
     )
 
