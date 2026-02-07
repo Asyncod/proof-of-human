@@ -60,7 +60,7 @@ class Config:
     bot_token: str
     bot_username: str
     owner_id: int
-    default_captcha_timeout: int = 30
+    default_captcha_timeout: int = 10
     welcome_message: str = (
         "Привет! 👋 Я бот защиты от спама.\n"
         "Все новые участники должны пройти верификацию.\n"
@@ -76,7 +76,7 @@ class Config:
         "🌽", "🌾", "🌷", "⚡", "⭐", "💎", "💡",
         "🔥", "⚓", "🎁", "🎈", "🎉", "🎊", "🎯", "🎲"
     ])
-    captcha_timeout_options: list[int] = field(default_factory=lambda: [30, 60, 120, 300])
+    captcha_timeout_options: list[int] = field(default_factory=lambda: [10, 30, 60, 120])
     default_max_attempts: int = 2
     max_attempts_options: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
 

@@ -31,7 +31,7 @@ async def create_db() -> None:
                     chat_id INTEGER PRIMARY KEY,
                     chat_title TEXT,
                     chat_captcha_enabled INTEGER DEFAULT 1,
-                    chat_captcha_timeout INTEGER DEFAULT 30,
+                    chat_captcha_timeout INTEGER DEFAULT 10,
                     chat_max_attempts INTEGER DEFAULT 2
                 )
             """)
