@@ -1,0 +1,52 @@
+# Environment variables (secrets!)
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# Virtual Environment
+.venv
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Database (runtime data)
+database/base/*.db
+database/base/*.db-journal
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+.opencode/
+.plans/
+AGENTS.md
+todo.md

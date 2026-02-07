@@ -1,0 +1,74 @@
+from datetime import datetime
+from aiogram import Router, F
+from aiogram.types import CallbackQuery
+from aiogram.exceptions import TelegramForbiddenError
+from database.captcha_table import get_captcha, delete_captcha
+from database.user_table import update_user
+from utils.time_helpers import is_expired
+from utils.rate_limit import captcha_rate_limiter
+from utils.helpers import safe_callback_answer
+from logs.logger import logger
+
+
+# ~~~~ ROUTER ~~~~
+captcha_router = Router()
+
+
+# ~~~~ CAPTCHA CALLBACK HANDLER ~~~~
+@captcha_router.callback_query(F.data.startswith("captcha:verify:"))
+async def captcha_callback(callback: CallbackQuery) -> None:
+    """Обработка нажатий на кнопки капчи"""
+    if callback.message is None:
+        return
+
+    try:
+        parts = callback.data.split(":")
+        if len(parts) != 5:
+            raise ValueError("Invalid callback data format")
+        _, action, token, user_id_str, chat_id_str = parts
+        user_id = int(user_id_str)
+        chat_id = int(chat_id_str)
+    except (ValueError, IndexError) as e:
+        logger.error(f"[Captcha] Invalid callback data: {callback.data}, error: {e}")
+        await safe_callback_answer(callback, "❌ Неверный формат данных", show_alert=True)
+        return
+
+    if callback.from_user.id != user_id:
+        await safe_callback_answer(callback, "❌ Эта капча не для вас", show_alert=True)
+        return
+
+    captcha = await get_captcha(captcha_user_id=user_id, captcha_chat_id=chat_id)
+
+    if captcha is None:
+        await safe_callback_answer(callback, "❌ Капча не найдена", show_alert=True)
+        return
+
+    if is_expired(captcha.captcha_expires_at):
+        try:
+            await callback.message.delete()
+        except TelegramForbiddenError:
+            pass
+        except Exception as e:
+            logger.error(f"[Captcha] Error deleting captcha message: {e}")
+        await delete_captcha(captcha_user_id=user_id, captcha_chat_id=chat_id)
+        await safe_callback_answer(callback, "❌ Время капчи истекло", show_alert=True)
+        return
+
+    if token == captcha.captcha_payload:
+        await delete_captcha(captcha_user_id=user_id, captcha_chat_id=chat_id)
+        await update_user(field="user_status", data=1, user_id=user_id)
+        captcha_rate_limiter.reset(user_id=user_id, chat_id=chat_id)
+        try:
+            await callback.message.delete()
+        except TelegramForbiddenError:
+            pass
+        except Exception as e:
+            logger.error(f"[Captcha] Error deleting message: {e}")
+        await safe_callback_answer(callback, "✅ Верификация пройдена!")
+        return
+
+    if not captcha_rate_limiter.is_allowed(user_id=user_id, chat_id=chat_id):
+        await safe_callback_answer(callback, "❌ Слишком много попыток! Подождите немного.", show_alert=True)
+        return
+
+    await safe_callback_answer(callback, "❌ Неправильная кнопка! Попробуйте еще раз.")
