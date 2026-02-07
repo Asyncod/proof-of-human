@@ -6,7 +6,6 @@ from database.captcha_table import get_captcha, delete_captcha, increment_captch
 from database.user_table import update_user
 from database.chat_table import get_chat
 from utils.time_helpers import is_expired
-from utils.rate_limit import captcha_rate_limiter
 from utils.helpers import safe_callback_answer
 from logs.logger import logger
 
@@ -58,7 +57,6 @@ async def captcha_callback(callback: CallbackQuery) -> None:
     if token == captcha.captcha_payload:
         await delete_captcha(captcha_user_id=user_id, captcha_chat_id=chat_id)
         await update_user(field="user_status", data=1, user_id=user_id)
-        captcha_rate_limiter.reset(user_id=user_id, chat_id=chat_id)
         try:
             await callback.message.delete()
         except TelegramForbiddenError:
@@ -66,10 +64,6 @@ async def captcha_callback(callback: CallbackQuery) -> None:
         except Exception as e:
             logger.error(f"[Captcha] Error deleting message: {e}")
         await safe_callback_answer(callback, "✅ Верификация пройдена!")
-        return
-
-    if not captcha_rate_limiter.is_allowed(user_id=user_id, chat_id=chat_id):
-        await safe_callback_answer(callback, "❌ Слишком много попыток! Подождите немного.", show_alert=True)
         return
 
     updated_captcha = await increment_captcha_attempts(
@@ -98,6 +92,17 @@ async def captcha_callback(callback: CallbackQuery) -> None:
             pass
         except Exception as e:
             logger.error(f"[Captcha] Error deleting captcha on max attempts: {e}")
+
+        if updated_captcha.captcha_user_message_id:
+            try:
+                await callback.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=updated_captcha.captcha_user_message_id
+                )
+            except TelegramForbiddenError:
+                pass
+            except Exception as e:
+                logger.error(f"[Captcha] Error deleting user message on max attempts: {e}")
 
         await delete_captcha(captcha_user_id=user_id, captcha_chat_id=chat_id)
         await safe_callback_answer(callback, "❌ Превышен лимит попыток", show_alert=True)
