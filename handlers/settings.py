@@ -83,7 +83,8 @@ async def settings_command(message: Message) -> None:
     text = (
         f"⚙️ <b>Настройки чата: {chat_data.chat_title}</b>\n\n"
         f"🔹 <b>Капча:</b> {'✅ Включена' if chat_data.chat_captcha_enabled else '❌ Выключена'}\n"
-        f"🔹 <b>Таймаут:</b> {chat_data.chat_captcha_timeout} сек"
+        f"🔹 <b>Таймаут:</b> {chat_data.chat_timeout} сек\n"
+        f"🔹 <b>Попыток:</b> {chat_data.chat_max_attempts}"
     )
 
     keyboard = get_settings_keyboard(chat_id=chat.id)
@@ -102,6 +103,7 @@ def get_settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
     builder.button(text="🔔 Вкл/Выкл капчу", callback_data=f"settings:toggle_captcha:{chat_id}")
     builder.button(text="⏱️ Таймаут", callback_data=f"settings:timeout:{chat_id}")
+    builder.button(text="🔢 Попытки", callback_data=f"settings:attempts:{chat_id}")
     builder.button(text="🗑️ Удалить", callback_data=f"settings:delete:{chat_id}")
 
     builder.adjust(1)
@@ -117,6 +119,22 @@ def get_timeout_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         builder.button(
             text=f"{timeout // 60} мин" if timeout >= 60 else f"{timeout} сек",
             callback_data=f"settings:set_timeout:{chat_id}:{timeout}"
+        )
+
+    builder.adjust(2)
+    builder.button(text="🔙 Назад", callback_data=f"settings:main:{chat_id}")
+    return builder.as_markup()
+
+
+def get_attempts_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора количества попыток"""
+    builder = InlineKeyboardBuilder()
+
+    for attempts in settings.max_attempts_options:
+        attempt_word = "попытка" if attempts == 1 else "попытки" if attempts <= 4 else "попыток"
+        builder.button(
+            text=f"{attempts} {attempt_word}",
+            callback_data=f"settings:set_attempts:{chat_id}:{attempts}"
         )
 
     builder.adjust(2)
@@ -203,8 +221,24 @@ async def settings_callback(callback: CallbackQuery) -> None:
 
     elif action == "set_timeout":
         value = int(parts[3])
-        await update_chat(field="chat_captcha_timeout", data=value, chat_id=chat_id)
+        await update_chat(field="chat_timeout", data=value, chat_id=chat_id)
         await safe_callback_answer(callback, f"✅ Таймаут: {value} сек")
+
+    elif action == "attempts":
+        keyboard = get_attempts_keyboard(chat_id=chat_id)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=keyboard)
+            await safe_callback_answer(callback)
+        except TelegramForbiddenError:
+            pass
+        except Exception as e:
+            logger.error(f"[Settings] Error editing attempts keyboard: {e}")
+        return
+
+    elif action == "set_attempts":
+        value = int(parts[3])
+        await update_chat(field="chat_max_attempts", data=value, chat_id=chat_id)
+        await safe_callback_answer(callback, f"✅ Макс. попыток: {value}")
 
     elif action == "main":
         keyboard = get_settings_keyboard(chat_id=chat_id)
@@ -231,7 +265,8 @@ async def settings_callback(callback: CallbackQuery) -> None:
     text = (
         f"⚙️ <b>Настройки чата: {updated_chat.chat_title}</b>\n\n"
         f"🔹 <b>Капча:</b> {'✅ Включена' if updated_chat.chat_captcha_enabled else '❌ Выключена'}\n"
-        f"🔹 <b>Таймаут:</b> {updated_chat.chat_captcha_timeout} сек"
+        f"🔹 <b>Таймаут:</b> {updated_chat.chat_timeout} сек\n"
+        f"🔹 <b>Попыток:</b> {updated_chat.chat_max_attempts}"
     )
 
     keyboard = get_settings_keyboard(chat_id=chat_id)

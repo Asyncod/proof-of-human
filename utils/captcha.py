@@ -40,7 +40,7 @@ async def send_captcha(message: Message, bot) -> None:
     if chat.chat_captcha_enabled == 0:
         return
 
-    expires_at = (datetime.now() + timedelta(seconds=chat.chat_captcha_timeout)).strftime("%Y-%m-%d %H:%M:%S")
+    expires_at = (datetime.now() + timedelta(seconds=chat.chat_timeout)).strftime("%Y-%m-%d %H:%M:%S")
     correct_token = secrets.token_urlsafe(16)
     correct_emoji = secrets.SystemRandom().choice(settings.captcha_emojis)
 
@@ -68,7 +68,7 @@ async def send_captcha(message: Message, bot) -> None:
     text = (
         f"🔒 <b>Верификация</b>\n\n"
         f"{prompt} {description}\n"
-        f"У вас есть {chat.chat_captcha_timeout} секунд."
+        f"У вас есть {chat.chat_timeout} секунд."
     )
 
     try:
@@ -86,5 +86,6 @@ async def send_captcha(message: Message, bot) -> None:
         captcha_payload=correct_token,
         captcha_message_id=captcha_message.message_id,
         captcha_correct_emoji=correct_emoji,
-        captcha_user_message_id=message.message_id
+        captcha_user_message_id=message.message_id,
+        captcha_attempts=0
     )

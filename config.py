@@ -77,6 +77,8 @@ class Config:
         "🔥", "⚓", "🎁", "🎈", "🎉", "🎊", "🎯", "🎲"
     ])
     captcha_timeout_options: list[int] = field(default_factory=lambda: [30, 60, 120, 300])
+    default_max_attempts: int = 2
+    max_attempts_options: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
 
 
 # ~~~~ SETTINGS ~~~~

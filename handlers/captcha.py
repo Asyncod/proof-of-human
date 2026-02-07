@@ -2,8 +2,9 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramForbiddenError
-from database.captcha_table import get_captcha, delete_captcha
+from database.captcha_table import get_captcha, delete_captcha, increment_captcha_attempts
 from database.user_table import update_user
+from database.chat_table import get_chat
 from utils.time_helpers import is_expired
 from utils.rate_limit import captcha_rate_limiter
 from utils.helpers import safe_callback_answer
@@ -71,4 +72,38 @@ async def captcha_callback(callback: CallbackQuery) -> None:
         await safe_callback_answer(callback, "❌ Слишком много попыток! Подождите немного.", show_alert=True)
         return
 
-    await safe_callback_answer(callback, "❌ Неправильная кнопка! Попробуйте еще раз.")
+    updated_captcha = await increment_captcha_attempts(
+        captcha_user_id=user_id,
+        captcha_chat_id=chat_id
+    )
+
+    if updated_captcha is None:
+        await safe_callback_answer(callback, "❌ Ошибка капчи", show_alert=True)
+        return
+
+    chat = await get_chat(chat_id=chat_id)
+
+    if chat is None:
+        await safe_callback_answer(callback, "❌ Чат не найден", show_alert=True)
+        return
+
+    max_attempts = chat.chat_max_attempts
+    attempts_used = updated_captcha.captcha_attempts
+    attempts_remaining = max_attempts - attempts_used
+
+    if attempts_remaining <= 0:
+        try:
+            await callback.message.delete()
+        except TelegramForbiddenError:
+            pass
+        except Exception as e:
+            logger.error(f"[Captcha] Error deleting captcha on max attempts: {e}")
+
+        await delete_captcha(captcha_user_id=user_id, captcha_chat_id=chat_id)
+        await safe_callback_answer(callback, "❌ Превышен лимит попыток", show_alert=True)
+        return
+
+    await safe_callback_answer(
+        callback,
+        f"❌ Неправильно! Осталось попыток: {attempts_remaining}"
+    )
