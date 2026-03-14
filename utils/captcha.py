@@ -38,10 +38,7 @@ async def send_captcha(message: Message, bot) -> CaptchaModel | None:
     user_id = message.from_user.id
     user_message_id = message.message_id
 
-    logger.info(
-        f"[Captcha] Starting captcha send: user_id={user_id}, chat_id={chat_id}, "
-        f"user_message_id={user_message_id}"
-    )
+
 
     # Получаем или создаём чат
     chat = await get_chat(chat_id=chat_id)
@@ -49,7 +46,6 @@ async def send_captcha(message: Message, bot) -> CaptchaModel | None:
     if chat is None:
         try:
             chat = await add_chat(chat_id=chat_id, chat_title=get_chat_title(message.chat))
-            logger.info(f"[Captcha] Created new chat in database: chat_id={chat_id}")
         except RuntimeError as e:
             logger.error(
                 f"[Captcha] Failed to create chat in database: chat_id={chat_id}, error={e}"
@@ -57,7 +53,6 @@ async def send_captcha(message: Message, bot) -> CaptchaModel | None:
             return None
 
     if chat.chat_captcha_enabled == 0:
-        logger.debug(f"[Captcha] Captcha disabled for chat: chat_id={chat_id}")
         return None
 
     # Генерируем параметры капчи
@@ -96,10 +91,6 @@ async def send_captcha(message: Message, bot) -> CaptchaModel | None:
     captcha_message = None
     try:
         captcha_message = await message.reply(text=text, reply_markup=keyboard)
-        logger.info(
-            f"[Captcha] Message sent to Telegram: chat_id={chat_id}, "
-            f"captcha_message_id={captcha_message.message_id}"
-        )
     except TelegramForbiddenError:
         logger.warning(
             f"[Captcha] TelegramForbiddenError when sending captcha: "
@@ -124,10 +115,6 @@ async def send_captcha(message: Message, bot) -> CaptchaModel | None:
             captcha_correct_emoji=correct_emoji,
             captcha_user_message_id=user_message_id,
             captcha_attempts=0
-        )
-        logger.info(
-            f"[Captcha] Successfully created captcha: captcha_id={captcha.captcha_id}, "
-            f"user_id={user_id}, chat_id={chat_id}, message_id={captcha_message.message_id}"
         )
         return captcha
         

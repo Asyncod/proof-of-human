@@ -82,10 +82,7 @@ async def add_user(
         if result is None:
             logger.error(f"[UserTable] Failed to retrieve user {user_id} after insert")
             raise RuntimeError(f"Database inconsistency: user {user_id} was inserted but not found")
-        logger.info(
-            f"[UserTable] Added user: user_id={user_id}, username={user_username}, "
-            f"is_premium={user_is_premium}"
-        )
+        pass
         return result
 
 

@@ -48,7 +48,6 @@ async def notify_owner_about_error(
 
         # Отправляем владельцу
         await bot.send_message(chat_id=settings.owner_id, text=text)
-        logger.info(f"[Notify] Sent error notification to owner: {error_type}")
 
     except TelegramForbiddenError:
         logger.error("[Notify] Cannot send notification - owner blocked bot")

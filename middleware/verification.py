@@ -153,125 +153,36 @@ class VerificationMiddleware(BaseMiddleware):
             
             # Удаляем истёкшие капчи (сообщения и записи из БД)
             for expired_captcha in expired_captchas:
-                logger.info(
-                    f"[Verification] Cleaning up expired captcha: captcha_id={expired_captcha.captcha_id}, "
-                    f"user_id={user.id}, chat_id={chat.id}"
-                )
-                
                 # Удаляем сообщение капчи
                 try:
                     await bot.delete_message(chat_id=chat.id, message_id=expired_captcha.captcha_message_id)
-                    logger.debug(
-                        f"[Verification] Deleted expired captcha message: "
-                        f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_message_id}"
-                    )
-                except TelegramForbiddenError:
-                    logger.warning(
-                        f"[Verification] No permission to delete expired captcha message: "
-                        f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_message_id}"
-                    )
-                except TelegramBadRequest as e:
-                    if "message to delete not found" in str(e).lower():
-                        logger.debug(
-                            f"[Verification] Expired captcha message already deleted: "
-                            f"captcha_id={expired_captcha.captcha_id}"
-                        )
-                    else:
-                        logger.error(
-                            f"[Verification] Error deleting expired captcha message: "
-                            f"captcha_id={expired_captcha.captcha_id}, error={e}"
-                        )
-                except Exception as e:
-                    logger.error(
-                        f"[Verification] Unexpected error deleting expired captcha message: "
-                        f"captcha_id={expired_captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
-                    )
+                except (TelegramForbiddenError, TelegramBadRequest, Exception):
+                    pass
                 
                 # Удаляем сообщение пользователя (если есть)
                 if expired_captcha.captcha_user_message_id:
                     try:
                         await bot.delete_message(chat_id=chat.id, message_id=expired_captcha.captcha_user_message_id)
-                        logger.debug(
-                            f"[Verification] Deleted expired user message: "
-                            f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_user_message_id}"
-                        )
-                    except TelegramForbiddenError:
-                        logger.warning(
-                            f"[Verification] No permission to delete expired user message: "
-                            f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_user_message_id}"
-                        )
-                    except TelegramBadRequest as e:
-                        if "message to delete not found" in str(e).lower():
-                            logger.debug(
-                                f"[Verification] Expired user message already deleted: "
-                                f"captcha_id={expired_captcha.captcha_id}"
-                            )
-                        else:
-                            logger.error(
-                                f"[Verification] Error deleting expired user message: "
-                                f"captcha_id={expired_captcha.captcha_id}, error={e}"
-                            )
-                    except Exception as e:
-                        logger.error(
-                            f"[Verification] Unexpected error deleting expired user message: "
-                            f"captcha_id={expired_captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
-                        )
+                    except (TelegramForbiddenError, TelegramBadRequest, Exception):
+                        pass
                 
                 # Удаляем запись из БД
                 try:
                     await delete_captcha(captcha_id=expired_captcha.captcha_id)
-                except Exception as e:
-                    logger.error(
-                        f"[Verification] Error deleting expired captcha from DB: "
-                        f"captcha_id={expired_captcha.captcha_id}, error={e}"
-                    )
+                except Exception:
+                    pass
             
             # Если есть активные капчи - удаляем текущее сообщение пользователя
             if active_captchas:
-                logger.debug(
-                    f"[Verification] User has {len(active_captchas)} active captchas, deleting message: "
-                    f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}"
-                )
                 try:
                     await event.delete()
-                    logger.debug(
-                        f"[Verification] Deleted user message: user_id={user.id}, message_id={event.message_id}"
-                    )
-                except TelegramForbiddenError:
-                    logger.warning(
-                        f"[Verification] No permission to delete user message: "
-                        f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}"
-                    )
-                except TelegramBadRequest as e:
-                    logger.error(
-                        f"[Verification] TelegramBadRequest deleting user message: "
-                        f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}, error={e}"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"[Verification] Unexpected error deleting user message: "
-                        f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}, "
-                        f"error_type={type(e).__name__}, error={e}"
-                    )
+                except (TelegramForbiddenError, TelegramBadRequest, Exception):
+                    pass
                 return
         
         # Создаём новую капчу
-        logger.info(
-            f"[Verification] Sending new captcha: user_id={user.id}, chat_id={chat.id}, "
-            f"user_message_id={event.message_id}"
-        )
         try:
             captcha = await send_captcha(message=event, bot=bot)
-            if captcha:
-                logger.info(
-                    f"[Verification] Captcha sent successfully: captcha_id={captcha.captcha_id}, "
-                    f"user_id={user.id}, chat_id={chat.id}"
-                )
-            else:
-                logger.warning(
-                    f"[Verification] Failed to send captcha (send_captcha returned None): "
-                    f"user_id={user.id}, chat_id={chat.id}"
-                )
         except Exception as e:
             logger.error(
                 f"[Verification] Error sending captcha: user_id={user.id}, chat_id={chat.id}, "

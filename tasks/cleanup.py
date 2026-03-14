@@ -24,7 +24,6 @@ async def cleanup_expired_captchas(bot: Bot, stop_event: asyncio.Event) -> None:
     """
     while not stop_event.is_set():
         now = get_timestamp()
-        logger.debug(f"[Cleanup] Starting cleanup cycle at {now}")
 
         try:
             async with connect(BASE_PATH) as db:
@@ -44,21 +43,11 @@ async def cleanup_expired_captchas(bot: Bot, stop_event: asyncio.Event) -> None:
                     logger.info("[Cleanup] Stop event received, breaking cleanup loop")
                     break
 
-                logger.debug(
-                    f"[Cleanup] Processing expired captcha: captcha_id={captcha_id}, "
-                    f"user_id={captcha_user_id}, chat_id={captcha_chat_id}, "
-                    f"message_id={captcha_message_id}, user_message_id={captcha_user_message_id}"
-                )
-
                 # Удаляем сообщение капчи
                 captcha_deleted = False
                 try:
                     await bot.delete_message(chat_id=captcha_chat_id, message_id=captcha_message_id)
                     captcha_deleted = True
-                    logger.debug(
-                        f"[Cleanup] Deleted captcha message: captcha_id={captcha_id}, "
-                        f"chat_id={captcha_chat_id}, message_id={captcha_message_id}"
-                    )
                 except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
                     error_msg = str(e)
                     logger.error(
@@ -80,10 +69,6 @@ async def cleanup_expired_captchas(bot: Bot, stop_event: asyncio.Event) -> None:
                     try:
                         await bot.delete_message(chat_id=captcha_chat_id, message_id=captcha_user_message_id)
                         user_message_deleted = True
-                        logger.debug(
-                            f"[Cleanup] Deleted user message: captcha_id={captcha_id}, "
-                            f"chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}"
-                        )
                     except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
                         error_msg = str(e)
                         logger.error(

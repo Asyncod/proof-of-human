@@ -129,11 +129,7 @@ async def add_captcha(
                     f"Database inconsistency: captcha_id={captcha_id} was inserted but not found"
                 )
             
-            logger.info(
-                f"[CaptchaTable] Added captcha: captcha_id={captcha_id}, "
-                f"user_id={captcha_user_id}, chat_id={captcha_chat_id}, "
-                f"message_id={captcha_message_id}, user_message_id={captcha_user_message_id}"
-            )
+            pass
             return result
             
         except IntegrityError as e:
@@ -160,8 +156,6 @@ async def delete_captcha(captcha_id: int) -> bool:
         )
         await db.commit()
         deleted = cursor.rowcount > 0
-        if deleted:
-            logger.info(f"[CaptchaTable] Deleted captcha: captcha_id={captcha_id}")
         return deleted
 
 
@@ -174,11 +168,6 @@ async def delete_all_captchas_for_user(captcha_user_id: int, captcha_chat_id: in
         )
         await db.commit()
         deleted_count = cursor.rowcount
-        if deleted_count > 0:
-            logger.info(
-                f"[CaptchaTable] Deleted all captchas for user: "
-                f"user_id={captcha_user_id}, chat_id={captcha_chat_id}, count={deleted_count}"
-            )
         return deleted_count
 
 
