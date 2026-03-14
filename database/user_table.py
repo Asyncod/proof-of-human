@@ -16,8 +16,6 @@ class UserModel:
         user_first_seen_at (str): timestamp первого появления
         user_language (str): язык пользователя
         user_is_premium (int | None): 1 - есть Premium, 0 - нет, NULL - неизвестно
-        user_rating_level (int | None): уровень рейтинга (может быть отрицательным)
-        user_rating_value (int | None): числовое значение рейтинга
     """
     user_id: int
     user_username: str
@@ -26,8 +24,6 @@ class UserModel:
     user_first_seen_at: str
     user_language: str
     user_is_premium: int | None
-    user_rating_level: int | None
-    user_rating_value: int | None
 
 
 # ~~~~ BASE CREATING ~~~~
@@ -42,9 +38,7 @@ async def create_db() -> None:
                     user_status INTEGER DEFAULT 0,
                     user_first_seen_at TEXT,
                     user_language TEXT,
-                    user_is_premium INTEGER,
-                    user_rating_level INTEGER,
-                    user_rating_value INTEGER
+                    user_is_premium INTEGER
                 )
             """)
             await db.commit()
@@ -57,7 +51,7 @@ async def get_user(user_id: int) -> UserModel | None:
     async with connect(BASE_PATH) as db:
         cursor = await db.execute(
             "SELECT user_id, user_username, user_name, user_status, user_first_seen_at, user_language, "
-            "user_is_premium, user_rating_level, user_rating_value "
+            "user_is_premium "
             "FROM user_table WHERE user_id = ?",
             (user_id,)
         )
@@ -72,18 +66,16 @@ async def add_user(
     user_name: str,
     user_first_seen_at: str,
     user_language: str,
-    user_is_premium: int | None = None,
-    user_rating_level: int | None = None,
-    user_rating_value: int | None = None
+    user_is_premium: int | None = None
 ) -> UserModel:
     """Добавить нового пользователя с аналитическими данными."""
     async with connect(BASE_PATH) as db:
         await db.execute(
             "INSERT INTO user_table (user_id, user_username, user_name, user_status, user_first_seen_at, "
-            "user_language, user_is_premium, user_rating_level, user_rating_value) "
-            "VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)",
+            "user_language, user_is_premium) "
+            "VALUES (?, ?, ?, 0, ?, ?, ?)",
             (user_id, user_username, user_name, user_first_seen_at, user_language,
-             user_is_premium, user_rating_level, user_rating_value)
+             user_is_premium)
         )
         await db.commit()
         result = await get_user(user_id=user_id)
@@ -92,7 +84,7 @@ async def add_user(
             raise RuntimeError(f"Database inconsistency: user {user_id} was inserted but not found")
         logger.info(
             f"[UserTable] Added user: user_id={user_id}, username={user_username}, "
-            f"is_premium={user_is_premium}, rating_level={user_rating_level}"
+            f"is_premium={user_is_premium}"
         )
         return result
 
@@ -100,7 +92,7 @@ async def add_user(
 # ~~~~ DATA UPDATING ~~~~
 ALLOWED_USER_FIELDS = {
     "user_username", "user_name", "user_status", "user_language",
-    "user_is_premium", "user_rating_level", "user_rating_value"
+    "user_is_premium"
 }
 
 async def update_user(field: str, data: str | int | None, user_id: int) -> None:
@@ -117,7 +109,7 @@ async def update_user(field: str, data: str | int | None, user_id: int) -> None:
 
 # ~~~~ MIGRATION ~~~~
 async def migrate_user_table() -> None:
-    """Добавить колонки для аналитики: is_premium, rating_level, rating_value"""
+    """Добавить колонку is_premium для аналитики"""
     async with connect(BASE_PATH) as db:
         try:
             # Проверяем существующие колонки
@@ -129,16 +121,6 @@ async def migrate_user_table() -> None:
             if "user_is_premium" not in column_names:
                 await db.execute("ALTER TABLE user_table ADD COLUMN user_is_premium INTEGER")
                 logger.info("[UserTable] Migration: added user_is_premium column")
-            
-            # Добавляем user_rating_level если отсутствует
-            if "user_rating_level" not in column_names:
-                await db.execute("ALTER TABLE user_table ADD COLUMN user_rating_level INTEGER")
-                logger.info("[UserTable] Migration: added user_rating_level column")
-            
-            # Добавляем user_rating_value если отсутствует
-            if "user_rating_value" not in column_names:
-                await db.execute("ALTER TABLE user_table ADD COLUMN user_rating_value INTEGER")
-                logger.info("[UserTable] Migration: added user_rating_value column")
             
             await db.commit()
             logger.info("[UserTable] Migration completed successfully")

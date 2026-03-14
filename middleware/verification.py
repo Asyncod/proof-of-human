@@ -122,23 +122,6 @@ class VerificationMiddleware(BaseMiddleware):
         if db_user is None:
             # Получаем аналитические данные о пользователе
             is_premium = 1 if user.is_premium else 0
-            rating_level = None
-            rating_value = None
-            
-            # Пытаемся получить UserRating через get_chat (только для приватных чатов)
-            try:
-                chat_info = await bot.get_chat(user.id)
-                if chat_info.rating:
-                    rating_level = chat_info.rating.level
-                    rating_value = chat_info.rating.rating
-                    logger.debug(
-                        f"[Verification] Got user rating: user_id={user.id}, "
-                        f"level={rating_level}, rating={rating_value}"
-                    )
-            except Exception as e:
-                logger.debug(
-                    f"[Verification] Could not get user rating: user_id={user.id}, error={e}"
-                )
             
             try:
                 db_user = await add_user(
@@ -147,13 +130,11 @@ class VerificationMiddleware(BaseMiddleware):
                     user_name=user.full_name,
                     user_first_seen_at=get_timestamp(),
                     user_language=user.language_code or "",
-                    user_is_premium=is_premium,
-                    user_rating_level=rating_level,
-                    user_rating_value=rating_value
+                    user_is_premium=is_premium
                 )
                 logger.info(
                     f"[Verification] Added user with analytics: user_id={user.id}, "
-                    f"is_premium={is_premium}, rating_level={rating_level}"
+                    f"is_premium={is_premium}"
                 )
             except RuntimeError as e:
                 logger.error(f"[Verification] Failed to add user {user.id} to database: {e}, skipping message")
