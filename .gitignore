@@ -45,7 +45,7 @@ logs/*.log
 .DS_Store
 Thumbs.db
 
-# Vibe
+# Setup
 .opencode/
 .plans/
 AGENTS.md

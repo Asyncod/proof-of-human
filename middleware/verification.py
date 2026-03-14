@@ -1,12 +1,12 @@
 from datetime import datetime
 from aiogram import BaseMiddleware
-from aiogram.types import Message
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.types import Message, TelegramObject
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from typing import Any, Callable, Dict, Awaitable
 from aiogram.enums import ChatMemberStatus
 from logs.logger import logger
 from database.user_table import get_user, add_user, update_user
-from database.captcha_table import get_captcha
+from database.captcha_table import get_captchas_for_user, delete_captcha
 from database.chat_table import get_chat
 from utils.captcha import send_captcha
 from utils.time_helpers import get_timestamp, is_expired
@@ -23,8 +23,8 @@ class VerificationMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[Event, Dict[str, Any]], Awaitable[Any]],
-        event: Event,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
         if not isinstance(event, Message):
@@ -104,18 +104,137 @@ class VerificationMiddleware(BaseMiddleware):
         if db_user.user_status == 1:
             return await handler(event, data)
 
-        existing_captcha = await get_captcha(captcha_user_id=user.id, captcha_chat_id=chat.id)
-        if existing_captcha is not None:
-            if is_expired(existing_captcha.captcha_expires_at):
-                await send_captcha(message=event, bot=bot)
+        # Получаем все активные капчи для пользователя в этом чате
+        existing_captchas = await get_captchas_for_user(captcha_user_id=user.id, captcha_chat_id=chat.id)
+        
+        if existing_captchas:
+            # Проверяем, есть ли среди них истёкшие
+            expired_captchas = [c for c in existing_captchas if is_expired(c.captcha_expires_at)]
+            active_captchas = [c for c in existing_captchas if not is_expired(c.captcha_expires_at)]
+            
+            # Удаляем истёкшие капчи (сообщения и записи из БД)
+            for expired_captcha in expired_captchas:
+                logger.info(
+                    f"[Verification] Cleaning up expired captcha: captcha_id={expired_captcha.captcha_id}, "
+                    f"user_id={user.id}, chat_id={chat.id}"
+                )
+                
+                # Удаляем сообщение капчи
+                try:
+                    await bot.delete_message(chat_id=chat.id, message_id=expired_captcha.captcha_message_id)
+                    logger.debug(
+                        f"[Verification] Deleted expired captcha message: "
+                        f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_message_id}"
+                    )
+                except TelegramForbiddenError:
+                    logger.warning(
+                        f"[Verification] No permission to delete expired captcha message: "
+                        f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_message_id}"
+                    )
+                except TelegramBadRequest as e:
+                    if "message to delete not found" in str(e).lower():
+                        logger.debug(
+                            f"[Verification] Expired captcha message already deleted: "
+                            f"captcha_id={expired_captcha.captcha_id}"
+                        )
+                    else:
+                        logger.error(
+                            f"[Verification] Error deleting expired captcha message: "
+                            f"captcha_id={expired_captcha.captcha_id}, error={e}"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"[Verification] Unexpected error deleting expired captcha message: "
+                        f"captcha_id={expired_captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
+                    )
+                
+                # Удаляем сообщение пользователя (если есть)
+                if expired_captcha.captcha_user_message_id:
+                    try:
+                        await bot.delete_message(chat_id=chat.id, message_id=expired_captcha.captcha_user_message_id)
+                        logger.debug(
+                            f"[Verification] Deleted expired user message: "
+                            f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_user_message_id}"
+                        )
+                    except TelegramForbiddenError:
+                        logger.warning(
+                            f"[Verification] No permission to delete expired user message: "
+                            f"captcha_id={expired_captcha.captcha_id}, message_id={expired_captcha.captcha_user_message_id}"
+                        )
+                    except TelegramBadRequest as e:
+                        if "message to delete not found" in str(e).lower():
+                            logger.debug(
+                                f"[Verification] Expired user message already deleted: "
+                                f"captcha_id={expired_captcha.captcha_id}"
+                            )
+                        else:
+                            logger.error(
+                                f"[Verification] Error deleting expired user message: "
+                                f"captcha_id={expired_captcha.captcha_id}, error={e}"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"[Verification] Unexpected error deleting expired user message: "
+                            f"captcha_id={expired_captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
+                        )
+                
+                # Удаляем запись из БД
+                try:
+                    await delete_captcha(captcha_id=expired_captcha.captcha_id)
+                except Exception as e:
+                    logger.error(
+                        f"[Verification] Error deleting expired captcha from DB: "
+                        f"captcha_id={expired_captcha.captcha_id}, error={e}"
+                    )
+            
+            # Если есть активные капчи - удаляем текущее сообщение пользователя
+            if active_captchas:
+                logger.debug(
+                    f"[Verification] User has {len(active_captchas)} active captchas, deleting message: "
+                    f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}"
+                )
+                try:
+                    await event.delete()
+                    logger.debug(
+                        f"[Verification] Deleted user message: user_id={user.id}, message_id={event.message_id}"
+                    )
+                except TelegramForbiddenError:
+                    logger.warning(
+                        f"[Verification] No permission to delete user message: "
+                        f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}"
+                    )
+                except TelegramBadRequest as e:
+                    logger.error(
+                        f"[Verification] TelegramBadRequest deleting user message: "
+                        f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}, error={e}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"[Verification] Unexpected error deleting user message: "
+                        f"user_id={user.id}, chat_id={chat.id}, message_id={event.message_id}, "
+                        f"error_type={type(e).__name__}, error={e}"
+                    )
                 return
-
-            try:
-                await event.delete()
-            except TelegramForbiddenError:
-                return
-            except Exception as e:
-                logger.error(f"[Verification] Error deleting message: {e}")
-            return
-
-        await send_captcha(message=event, bot=bot)
+        
+        # Создаём новую капчу
+        logger.info(
+            f"[Verification] Sending new captcha: user_id={user.id}, chat_id={chat.id}, "
+            f"user_message_id={event.message_id}"
+        )
+        try:
+            captcha = await send_captcha(message=event, bot=bot)
+            if captcha:
+                logger.info(
+                    f"[Verification] Captcha sent successfully: captcha_id={captcha.captcha_id}, "
+                    f"user_id={user.id}, chat_id={chat.id}"
+                )
+            else:
+                logger.warning(
+                    f"[Verification] Failed to send captcha (send_captcha returned None): "
+                    f"user_id={user.id}, chat_id={chat.id}"
+                )
+        except Exception as e:
+            logger.error(
+                f"[Verification] Error sending captcha: user_id={user.id}, chat_id={chat.id}, "
+                f"error_type={type(e).__name__}, error={e}"
+            )
