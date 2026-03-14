@@ -183,6 +183,7 @@ class VerificationMiddleware(BaseMiddleware):
         # Создаём новую капчу
         try:
             captcha = await send_captcha(message=event, bot=bot)
+            return 
         except Exception as e:
             logger.error(
                 f"[Verification] Error sending captcha: user_id={user.id}, chat_id={chat.id}, "
