@@ -6,6 +6,7 @@ from logs.logger import logger
 from config import BASE_PATH
 from database.captcha_table import delete_captcha
 from utils.time_helpers import get_timestamp
+from utils.notifications import notify_owner_about_error
 
 
 # ~~~~ CAPTCHA CLEANUP ~~~~
@@ -58,35 +59,19 @@ async def cleanup_expired_captchas(bot: Bot, stop_event: asyncio.Event) -> None:
                         f"[Cleanup] Deleted captcha message: captcha_id={captcha_id}, "
                         f"chat_id={captcha_chat_id}, message_id={captcha_message_id}"
                     )
-                except TelegramForbiddenError:
-                    logger.warning(
-                        f"[Cleanup] No permission to delete captcha message: "
-                        f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, message_id={captcha_message_id}"
-                    )
-                except TelegramBadRequest as e:
-                    if "message to delete not found" in str(e).lower():
-                        logger.info(
-                            f"[Cleanup] Captcha message already deleted: "
-                            f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, message_id={captcha_message_id}"
-                        )
-                        captcha_deleted = True  # Сообщение уже удалено, считаем успехом
-                    elif "message can't be deleted" in str(e).lower():
-                        logger.warning(
-                            f"[Cleanup] Cannot delete captcha message (too old or no rights): "
-                            f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, message_id={captcha_message_id}, "
-                            f"error={e}"
-                        )
-                    else:
-                        logger.error(
-                            f"[Cleanup] TelegramBadRequest deleting captcha message: "
-                            f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, message_id={captcha_message_id}, "
-                            f"error={e}"
-                        )
-                except Exception as e:
+                except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
+                    error_msg = str(e)
                     logger.error(
-                        f"[Cleanup] Unexpected error deleting captcha message: "
+                        f"[Cleanup] Error deleting captcha message: "
                         f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, message_id={captcha_message_id}, "
-                        f"error_type={type(e).__name__}, error={e}"
+                        f"error={error_msg}"
+                    )
+                    await notify_owner_about_error(
+                        bot=bot,
+                        error_type="cleanup_delete_captcha_failed",
+                        chat_id=captcha_chat_id,
+                        message_id=captcha_message_id,
+                        error_description=f"Failed to delete captcha message: {error_msg}"
                     )
 
                 # Удаляем сообщение пользователя
@@ -99,35 +84,19 @@ async def cleanup_expired_captchas(bot: Bot, stop_event: asyncio.Event) -> None:
                             f"[Cleanup] Deleted user message: captcha_id={captcha_id}, "
                             f"chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}"
                         )
-                    except TelegramForbiddenError:
-                        logger.warning(
-                            f"[Cleanup] No permission to delete user message: "
-                            f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}"
-                        )
-                    except TelegramBadRequest as e:
-                        if "message to delete not found" in str(e).lower():
-                            logger.info(
-                                f"[Cleanup] User message already deleted: "
-                                f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}"
-                            )
-                            user_message_deleted = True
-                        elif "message can't be deleted" in str(e).lower():
-                            logger.warning(
-                                f"[Cleanup] Cannot delete user message (too old or no rights): "
-                                f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}, "
-                                f"error={e}"
-                            )
-                        else:
-                            logger.error(
-                                f"[Cleanup] TelegramBadRequest deleting user message: "
-                                f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}, "
-                                f"error={e}"
-                            )
-                    except Exception as e:
+                    except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
+                        error_msg = str(e)
                         logger.error(
-                            f"[Cleanup] Unexpected error deleting user message: "
+                            f"[Cleanup] Error deleting user message: "
                             f"captcha_id={captcha_id}, chat_id={captcha_chat_id}, user_message_id={captcha_user_message_id}, "
-                            f"error_type={type(e).__name__}, error={e}"
+                            f"error={error_msg}"
+                        )
+                        await notify_owner_about_error(
+                            bot=bot,
+                            error_type="cleanup_delete_user_message_failed",
+                            chat_id=captcha_chat_id,
+                            message_id=captcha_user_message_id,
+                            error_description=f"Failed to delete user message: {error_msg}"
                         )
 
                 # Удаляем запись из БД в любом случае

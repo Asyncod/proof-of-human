@@ -12,6 +12,7 @@ from database.user_table import update_user
 from database.chat_table import get_chat
 from utils.time_helpers import is_expired
 from utils.helpers import safe_callback_answer
+from utils.notifications import notify_owner_about_error
 from logs.logger import logger
 
 
@@ -89,27 +90,20 @@ async def captcha_callback(callback: CallbackQuery) -> None:
             logger.debug(
                 f"[Captcha] Deleted expired captcha message: captcha_id={captcha.captcha_id}"
             )
-        except TelegramForbiddenError:
-            logger.warning(
-                f"[Captcha] No permission to delete expired captcha message: "
-                f"captcha_id={captcha.captcha_id}"
-            )
-        except TelegramBadRequest as e:
-            if "message to delete not found" in str(e).lower():
-                logger.debug(
-                    f"[Captcha] Expired captcha message already deleted: "
-                    f"captcha_id={captcha.captcha_id}"
-                )
-            else:
-                logger.error(
-                    f"[Captcha] TelegramBadRequest deleting expired captcha: "
-                    f"captcha_id={captcha.captcha_id}, error={e}"
-                )
-        except Exception as e:
+        except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
+            error_msg = str(e)
             logger.error(
-                f"[Captcha] Unexpected error deleting expired captcha: "
-                f"captcha_id={captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
+                f"[Captcha] Error deleting expired captcha message: "
+                f"captcha_id={captcha.captcha_id}, error={error_msg}"
             )
+            if callback.bot:
+                await notify_owner_about_error(
+                    bot=callback.bot,
+                    error_type="delete_expired_captcha_failed",
+                    chat_id=chat_id,
+                    message_id=captcha.captcha_message_id,
+                    error_description=f"Failed to delete expired captcha: {error_msg}"
+                )
         
         # Удаляем запись из БД
         try:
@@ -158,25 +152,20 @@ async def captcha_callback(callback: CallbackQuery) -> None:
         try:
             await callback.message.delete()
             logger.debug(f"[Captcha] Deleted captcha message: captcha_id={captcha.captcha_id}")
-        except TelegramForbiddenError:
-            logger.warning(
-                f"[Captcha] No permission to delete captcha message: captcha_id={captcha.captcha_id}"
-            )
-        except TelegramBadRequest as e:
-            if "message to delete not found" in str(e).lower():
-                logger.debug(
-                    f"[Captcha] Captcha message already deleted: captcha_id={captcha.captcha_id}"
-                )
-            else:
-                logger.error(
-                    f"[Captcha] TelegramBadRequest deleting captcha message: "
-                    f"captcha_id={captcha.captcha_id}, error={e}"
-                )
-        except Exception as e:
+        except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
+            error_msg = str(e)
             logger.error(
-                f"[Captcha] Unexpected error deleting captcha message: "
-                f"captcha_id={captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
+                f"[Captcha] Error deleting captcha message: "
+                f"captcha_id={captcha.captcha_id}, error={error_msg}"
             )
+            if callback.bot:
+                await notify_owner_about_error(
+                    bot=callback.bot,
+                    error_type="delete_captcha_failed",
+                    chat_id=chat_id,
+                    message_id=captcha.captcha_message_id,
+                    error_description=f"Failed to delete captcha: {error_msg}"
+                )
         
         await safe_callback_answer(callback, "✅ Верификация пройдена!")
         return
@@ -227,26 +216,20 @@ async def captcha_callback(callback: CallbackQuery) -> None:
             logger.debug(
                 f"[Captcha] Deleted captcha message on max attempts: captcha_id={captcha.captcha_id}"
             )
-        except TelegramForbiddenError:
-            logger.warning(
-                f"[Captcha] No permission to delete captcha on max attempts: "
-                f"captcha_id={captcha.captcha_id}"
-            )
-        except TelegramBadRequest as e:
-            if "message to delete not found" in str(e).lower():
-                logger.debug(
-                    f"[Captcha] Captcha message already deleted: captcha_id={captcha.captcha_id}"
-                )
-            else:
-                logger.error(
-                    f"[Captcha] TelegramBadRequest deleting captcha on max attempts: "
-                    f"captcha_id={captcha.captcha_id}, error={e}"
-                )
-        except Exception as e:
+        except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
+            error_msg = str(e)
             logger.error(
-                f"[Captcha] Unexpected error deleting captcha on max attempts: "
-                f"captcha_id={captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
+                f"[Captcha] Error deleting captcha on max attempts: "
+                f"captcha_id={captcha.captcha_id}, error={error_msg}"
             )
+            if callback.bot:
+                await notify_owner_about_error(
+                    bot=callback.bot,
+                    error_type="delete_captcha_max_attempts_failed",
+                    chat_id=chat_id,
+                    message_id=captcha.captcha_message_id,
+                    error_description=f"Failed to delete captcha on max attempts: {error_msg}"
+                )
 
         # Удаляем сообщение пользователя
         if updated_captcha.captcha_user_message_id:
@@ -259,26 +242,20 @@ async def captcha_callback(callback: CallbackQuery) -> None:
                     f"[Captcha] Deleted user message on max attempts: "
                     f"captcha_id={captcha.captcha_id}, message_id={updated_captcha.captcha_user_message_id}"
                 )
-            except TelegramForbiddenError:
-                logger.warning(
-                    f"[Captcha] No permission to delete user message on max attempts: "
-                    f"captcha_id={captcha.captcha_id}"
-                )
-            except TelegramBadRequest as e:
-                if "message to delete not found" in str(e).lower():
-                    logger.debug(
-                        f"[Captcha] User message already deleted: captcha_id={captcha.captcha_id}"
-                    )
-                else:
-                    logger.error(
-                        f"[Captcha] TelegramBadRequest deleting user message on max attempts: "
-                        f"captcha_id={captcha.captcha_id}, error={e}"
-                    )
-            except Exception as e:
+            except (TelegramForbiddenError, TelegramBadRequest, Exception) as e:
+                error_msg = str(e)
                 logger.error(
-                    f"[Captcha] Unexpected error deleting user message on max attempts: "
-                    f"captcha_id={captcha.captcha_id}, error_type={type(e).__name__}, error={e}"
+                    f"[Captcha] Error deleting user message on max attempts: "
+                    f"captcha_id={captcha.captcha_id}, error={error_msg}"
                 )
+                if callback.bot:
+                    await notify_owner_about_error(
+                        bot=callback.bot,
+                        error_type="delete_user_message_max_attempts_failed",
+                        chat_id=chat_id,
+                        message_id=updated_captcha.captcha_user_message_id,
+                        error_description=f"Failed to delete user message on max attempts: {error_msg}"
+                    )
 
         # Удаляем капчу из БД
         try:
