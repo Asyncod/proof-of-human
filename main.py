@@ -7,7 +7,7 @@ from logs.logger import logger
 from config import settings
 from database.captcha_table import create_db as create_captcha_db, migrate_captcha_table, migrate_captcha_table_v2
 from database.chat_table import create_db as create_chat_db, migrate_chat_table
-from database.user_table import create_db as create_user_db
+from database.user_table import create_db as create_user_db, migrate_user_table
 from handlers.captcha import captcha_router
 from handlers.chat_member import chat_member_router
 from handlers.settings import settings_router
@@ -28,6 +28,7 @@ async def create_databases() -> None:
     await migrate_captcha_table_v2()  # Новая миграция для captcha_id
     await migrate_captcha_table()  # Старая миграция для captcha_attempts
     await migrate_chat_table()
+    await migrate_user_table()  # Миграция для аналитики (is_premium, rating)
 
     logger.info("All database tables created and migrated")
 

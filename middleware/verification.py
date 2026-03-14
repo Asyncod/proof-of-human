@@ -4,6 +4,7 @@ from aiogram.types import Message, TelegramObject
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from typing import Any, Callable, Dict, Awaitable
 from aiogram.enums import ChatMemberStatus
+from aiogram.enums.content_type import ContentType
 from logs.logger import logger
 from database.user_table import get_user, add_user, update_user
 from database.captcha_table import get_captchas_for_user, delete_captcha
@@ -11,6 +12,32 @@ from database.chat_table import get_chat
 from utils.captcha import send_captcha
 from utils.time_helpers import get_timestamp, is_expired
 from utils.helpers import is_bot_admin
+
+
+# Сервисные типы сообщений, которые нужно игнорировать
+SERVICE_CONTENT_TYPES = {
+    ContentType.NEW_CHAT_MEMBERS,
+    ContentType.LEFT_CHAT_MEMBER,
+    ContentType.PINNED_MESSAGE,
+    ContentType.NEW_CHAT_TITLE,
+    ContentType.NEW_CHAT_PHOTO,
+    ContentType.DELETE_CHAT_PHOTO,
+    ContentType.GROUP_CHAT_CREATED,
+    ContentType.SUPERGROUP_CHAT_CREATED,
+    ContentType.CHANNEL_CHAT_CREATED,
+    ContentType.MIGRATE_TO_CHAT_ID,
+    ContentType.MIGRATE_FROM_CHAT_ID,
+    ContentType.VIDEO_CHAT_SCHEDULED,
+    ContentType.VIDEO_CHAT_STARTED,
+    ContentType.VIDEO_CHAT_ENDED,
+    ContentType.VIDEO_CHAT_PARTICIPANTS_INVITED,
+    ContentType.FORUM_TOPIC_CREATED,
+    ContentType.FORUM_TOPIC_EDITED,
+    ContentType.FORUM_TOPIC_CLOSED,
+    ContentType.FORUM_TOPIC_REOPENED,
+    ContentType.GENERAL_FORUM_TOPIC_HIDDEN,
+    ContentType.GENERAL_FORUM_TOPIC_UNHIDDEN,
+}
 
 
 # ~~~~ EVENT TYPE ~~~~
@@ -28,6 +55,10 @@ class VerificationMiddleware(BaseMiddleware):
         data: Dict[str, Any]
     ) -> Any:
         if not isinstance(event, Message):
+            return await handler(event, data)
+
+        # Игнорируем сервисные сообщения (вступление, выход, закрепление и т.д.)
+        if event.content_type in SERVICE_CONTENT_TYPES:
             return await handler(event, data)
 
         chat = event.chat
@@ -89,13 +120,40 @@ class VerificationMiddleware(BaseMiddleware):
         db_user = await get_user(user_id=user.id)
 
         if db_user is None:
+            # Получаем аналитические данные о пользователе
+            is_premium = 1 if user.is_premium else 0
+            rating_level = None
+            rating_value = None
+            
+            # Пытаемся получить UserRating через get_chat (только для приватных чатов)
+            try:
+                chat_info = await bot.get_chat(user.id)
+                if chat_info.rating:
+                    rating_level = chat_info.rating.level
+                    rating_value = chat_info.rating.rating
+                    logger.debug(
+                        f"[Verification] Got user rating: user_id={user.id}, "
+                        f"level={rating_level}, rating={rating_value}"
+                    )
+            except Exception as e:
+                logger.debug(
+                    f"[Verification] Could not get user rating: user_id={user.id}, error={e}"
+                )
+            
             try:
                 db_user = await add_user(
                     user_id=user.id,
                     user_username=user.username or "",
                     user_name=user.full_name,
                     user_first_seen_at=get_timestamp(),
-                    user_language=user.language_code or ""
+                    user_language=user.language_code or "",
+                    user_is_premium=is_premium,
+                    user_rating_level=rating_level,
+                    user_rating_value=rating_value
+                )
+                logger.info(
+                    f"[Verification] Added user with analytics: user_id={user.id}, "
+                    f"is_premium={is_premium}, rating_level={rating_level}"
                 )
             except RuntimeError as e:
                 logger.error(f"[Verification] Failed to add user {user.id} to database: {e}, skipping message")

@@ -15,6 +15,9 @@ class UserModel:
         user_status (int): 0 - не верифицирован, 1 - верифицирован
         user_first_seen_at (str): timestamp первого появления
         user_language (str): язык пользователя
+        user_is_premium (int | None): 1 - есть Premium, 0 - нет, NULL - неизвестно
+        user_rating_level (int | None): уровень рейтинга (может быть отрицательным)
+        user_rating_value (int | None): числовое значение рейтинга
     """
     user_id: int
     user_username: str
@@ -22,6 +25,9 @@ class UserModel:
     user_status: int
     user_first_seen_at: str
     user_language: str
+    user_is_premium: int | None
+    user_rating_level: int | None
+    user_rating_value: int | None
 
 
 # ~~~~ BASE CREATING ~~~~
@@ -35,7 +41,10 @@ async def create_db() -> None:
                     user_name TEXT,
                     user_status INTEGER DEFAULT 0,
                     user_first_seen_at TEXT,
-                    user_language TEXT
+                    user_language TEXT,
+                    user_is_premium INTEGER,
+                    user_rating_level INTEGER,
+                    user_rating_value INTEGER
                 )
             """)
             await db.commit()
@@ -47,7 +56,8 @@ async def create_db() -> None:
 async def get_user(user_id: int) -> UserModel | None:
     async with connect(BASE_PATH) as db:
         cursor = await db.execute(
-            "SELECT user_id, user_username, user_name, user_status, user_first_seen_at, user_language "
+            "SELECT user_id, user_username, user_name, user_status, user_first_seen_at, user_language, "
+            "user_is_premium, user_rating_level, user_rating_value "
             "FROM user_table WHERE user_id = ?",
             (user_id,)
         )
@@ -61,28 +71,41 @@ async def add_user(
     user_username: str,
     user_name: str,
     user_first_seen_at: str,
-    user_language: str
-) -> UserModel | None:
+    user_language: str,
+    user_is_premium: int | None = None,
+    user_rating_level: int | None = None,
+    user_rating_value: int | None = None
+) -> UserModel:
+    """Добавить нового пользователя с аналитическими данными."""
     async with connect(BASE_PATH) as db:
         await db.execute(
-            "INSERT INTO user_table (user_id, user_username, user_name, user_status, user_first_seen_at, user_language) "
-            "VALUES (?, ?, ?, 0, ?, ?)",
-            (user_id, user_username, user_name, user_first_seen_at, user_language)
+            "INSERT INTO user_table (user_id, user_username, user_name, user_status, user_first_seen_at, "
+            "user_language, user_is_premium, user_rating_level, user_rating_value) "
+            "VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)",
+            (user_id, user_username, user_name, user_first_seen_at, user_language,
+             user_is_premium, user_rating_level, user_rating_value)
         )
         await db.commit()
         result = await get_user(user_id=user_id)
         if result is None:
-            logger.error(f"Failed to retrieve user {user_id} after insert")
+            logger.error(f"[UserTable] Failed to retrieve user {user_id} after insert")
             raise RuntimeError(f"Database inconsistency: user {user_id} was inserted but not found")
+        logger.info(
+            f"[UserTable] Added user: user_id={user_id}, username={user_username}, "
+            f"is_premium={user_is_premium}, rating_level={user_rating_level}"
+        )
         return result
 
 
 # ~~~~ DATA UPDATING ~~~~
-ALLOWED_USER_FIELDS = {"user_username", "user_name", "user_status", "user_language"}
+ALLOWED_USER_FIELDS = {
+    "user_username", "user_name", "user_status", "user_language",
+    "user_is_premium", "user_rating_level", "user_rating_value"
+}
 
-async def update_user(field: str, data: str | int, user_id: int) -> None:
+async def update_user(field: str, data: str | int | None, user_id: int) -> None:
     if field not in ALLOWED_USER_FIELDS:
-        return logger.error(f"Invalid field name: {field}")
+        return logger.error(f"[UserTable] Invalid field name: {field}")
 
     async with connect(BASE_PATH) as db:
         await db.execute(
@@ -90,6 +113,37 @@ async def update_user(field: str, data: str | int, user_id: int) -> None:
             (data, user_id)
         )
         await db.commit()
+
+
+# ~~~~ MIGRATION ~~~~
+async def migrate_user_table() -> None:
+    """Добавить колонки для аналитики: is_premium, rating_level, rating_value"""
+    async with connect(BASE_PATH) as db:
+        try:
+            # Проверяем существующие колонки
+            cursor = await db.execute("PRAGMA table_info(user_table)")
+            columns = await cursor.fetchall()
+            column_names = {col[1] for col in columns}
+            
+            # Добавляем user_is_premium если отсутствует
+            if "user_is_premium" not in column_names:
+                await db.execute("ALTER TABLE user_table ADD COLUMN user_is_premium INTEGER")
+                logger.info("[UserTable] Migration: added user_is_premium column")
+            
+            # Добавляем user_rating_level если отсутствует
+            if "user_rating_level" not in column_names:
+                await db.execute("ALTER TABLE user_table ADD COLUMN user_rating_level INTEGER")
+                logger.info("[UserTable] Migration: added user_rating_level column")
+            
+            # Добавляем user_rating_value если отсутствует
+            if "user_rating_value" not in column_names:
+                await db.execute("ALTER TABLE user_table ADD COLUMN user_rating_value INTEGER")
+                logger.info("[UserTable] Migration: added user_rating_value column")
+            
+            await db.commit()
+            logger.info("[UserTable] Migration completed successfully")
+        except OperationalError as e:
+            logger.warning(f"[UserTable] Migration warning: {e}")
 
 
 # ~~~~ STATISTICS ~~~~

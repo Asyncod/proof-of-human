@@ -3,7 +3,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from database.captcha_table import (
-    get_captcha_by_payload, 
+    get_captchas_for_user,
     delete_captcha, 
     delete_all_captchas_for_user,
     increment_captcha_attempts
@@ -58,29 +58,23 @@ async def captcha_callback(callback: CallbackQuery) -> None:
         await safe_callback_answer(callback, "❌ Эта капча не для вас", show_alert=True)
         return
 
-    # Ищем капчу по токену (payload)
-    captcha = await get_captcha_by_payload(captcha_payload=token)
+    # Ищем все капчи пользователя в этом чате
+    captchas = await get_captchas_for_user(captcha_user_id=user_id, captcha_chat_id=chat_id)
 
-    if captcha is None:
+    if not captchas:
         logger.info(
-            f"[Captcha] Captcha not found by payload: user_id={user_id}, chat_id={chat_id}"
+            f"[Captcha] No active captchas found: user_id={user_id}, chat_id={chat_id}"
         )
-        await safe_callback_answer(callback, "❌ Капча не найдена", show_alert=True)
+        await safe_callback_answer(callback, "❌ Капча не найдена или истекла", show_alert=True)
         return
 
+    # Берём первую активную капчу (обычно она одна)
+    captcha = captchas[0]
+    
     logger.debug(
         f"[Captcha] Found captcha: captcha_id={captcha.captcha_id}, "
         f"user_id={captcha.captcha_user_id}, chat_id={captcha.captcha_chat_id}"
     )
-
-    # Проверяем, что капча соответствует пользователю и чату из callback
-    if captcha.captcha_user_id != user_id or captcha.captcha_chat_id != chat_id:
-        logger.warning(
-            f"[Captcha] Captcha mismatch: expected user={user_id}/chat={chat_id}, "
-            f"got user={captcha.captcha_user_id}/chat={captcha.captcha_chat_id}"
-        )
-        await safe_callback_answer(callback, "❌ Неверная капча", show_alert=True)
-        return
 
     # Проверяем, не истекла ли капча
     if is_expired(captcha.captcha_expires_at):
